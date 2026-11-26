@@ -169,7 +169,7 @@
   /* ---------------- SEO: canonical + hreflang per language ---------------- */
   function seo() {
     if (!/^https?:$/.test(location.protocol)) return;
-    var base = location.origin + location.pathname;
+    var base = location.origin + location.pathname.replace(/\/index\.html$/, "/").replace(/\.html$/, "");
     function link(rel, href, hl) {
       var sel = 'link[rel="' + rel + '"]' + (hl ? '[hreflang="' + hl + '"]' : ""), l = document.head.querySelector(sel);
       if (!l) { l = document.createElement("link"); l.rel = rel; if (hl) l.hreflang = hl; document.head.appendChild(l); }

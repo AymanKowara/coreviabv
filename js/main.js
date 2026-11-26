@@ -338,23 +338,61 @@
     });
   }
 
-  /* The header is fixed, so "#top" cannot be scrolled to as an anchor: the logo and "Back to top"
-     scroll the page to the very top instead (and close the mobile menu if it is open). */
-  function initTopLinks() {
+  /* ---------- Clean addresses ----------
+     · In-page links scroll smoothly to their section without writing "#section" into the address bar.
+     · A link that arrives with a #section or ?subject= opens there, then the address is tidied up.
+     · Company pages are linked as /moventra rather than /moventra.html. GitHub Pages serves both;
+       on other hosts (local preview) the links get their .html back. */
+  var CLEAN_HOST = /(^|\.)coreviabv\.nl$|\.github\.io$/.test(window.location.hostname);
+  var PAGES = /^(moventra|talentra|promovia|privacy)((?:\?[^#]*)?(?:#.*)?)$/;
+
+  function tidyUrl() {
+    var url = new URL(window.location.href);
+    url.searchParams.delete("subject");
+    var path = url.pathname;
+    if (CLEAN_HOST) path = path.replace(/\/index\.html$/, "/").replace(/\.html$/, "");
+    try { window.history.replaceState(null, "", path + url.search); } catch (e) { /* sandboxed */ }
+  }
+
+  function goTo(id, smooth) {
+    var behavior = smooth && !reduceMotion ? "smooth" : "auto";
+    if (id === "top") { window.scrollTo({ top: 0, behavior: behavior }); return true; }
+    var el = document.getElementById(id);
+    if (!el) return false;
+    el.scrollIntoView({ behavior: behavior, block: "start" });
+    if (!/^(A|BUTTON|INPUT|SELECT|TEXTAREA)$/.test(el.tagName) && !el.hasAttribute("tabindex")) el.setAttribute("tabindex", "-1");
+    try { el.focus({ preventScroll: true }); } catch (e) { /* old browser */ }
+    return true;
+  }
+
+  function initAnchors() {
+    if (!CLEAN_HOST) {
+      document.querySelectorAll("a[href]").forEach(function (a) {
+        var m = a.getAttribute("href").match(PAGES);
+        if (m) a.setAttribute("href", m[1] + ".html" + m[2]);
+      });
+    }
     document.addEventListener("click", function (e) {
-      var a = e.target.closest && e.target.closest('a[href="#top"]');
-      if (!a || e.metaKey || e.ctrlKey || e.shiftKey) return;
+      if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      var a = e.target.closest && e.target.closest("a[href]");
+      if (!a) return;
+      var href = a.getAttribute("href");
+      if (href.charAt(0) !== "#" || href.length < 2) return;
+      if (!goTo(decodeURIComponent(href.slice(1)), true)) return;
       e.preventDefault();
-      var reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-      window.scrollTo({ top: 0, behavior: reduce ? "auto" : "smooth" });
-      try { window.history.replaceState(null, "", window.location.pathname + window.location.search); } catch (err) { /* sandboxed */ }
       var nav = document.querySelector(".primary-nav.is-open"), btn = document.querySelector(".menu-toggle");
       if (nav && btn) btn.click();
+    });
+    // Arriving with #section (e.g. from a company page): jump there once the page has laid out, then tidy the address.
+    window.addEventListener("load", function () {
+      var id = window.location.hash ? decodeURIComponent(window.location.hash.slice(1)) : "";
+      if (id) window.setTimeout(function () { goTo(id, false); }, 60);
+      tidyUrl();
     });
   }
 
   buildLangMenu();
-  initTopLinks();
+  initAnchors();
   initMenu();
   initHeader();
   initPaths();
