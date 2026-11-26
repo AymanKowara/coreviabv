@@ -23,7 +23,10 @@
   var conn = navigator.connection || {};
   // iPhones always report 4 cores, so only genuinely weak devices (≤2 cores or ≤2 GB) and data saver count.
   var lowPower = !!conn.saveData || (navigator.hardwareConcurrency || 8) <= 2 || (navigator.deviceMemory || 8) <= 2;
-  if (lowPower) document.documentElement.classList.add("low-power");
+  // Phones and tablets: keep every animation, but drop the effects that are expensive to repaint
+  // (blurred glow along a page-tall line, blend-mode grain, background blur) and draw the background at 30 fps.
+  var lite = lowPower || window.matchMedia("(pointer: coarse)").matches || window.innerWidth < 1024;
+  if (lite) document.documentElement.classList.add("low-power");
 
   function el(tag, attrs, parent) {
     var e = document.createElementNS(NS, tag);
@@ -196,7 +199,7 @@
       if (S.y2 < b.y - 1) d += lineTo(b.x, b.y);
     }
     base = el("path", { d: d, fill: "none", stroke: ROUTE_FAINT, "stroke-width": "1", "stroke-dasharray": "2 6" }, svg);
-    glow = el("path", lowPower
+    glow = el("path", lite
       ? { d: d, fill: "none", stroke: "url(#route-grad)", "stroke-width": "4", "stroke-linecap": "round", opacity: "0.25" }
       : { d: d, fill: "none", stroke: "url(#route-grad)", "stroke-width": "6", "stroke-linecap": "round", opacity: "0.55", filter: "url(#route-blur)" }, svg);
     sharp = el("path", { d: d, fill: "none", stroke: "url(#route-grad)", "stroke-width": "1.6", "stroke-linecap": "round" }, svg);
@@ -220,14 +223,14 @@
       var span = PL[j + 1] - PL[j], f = span > 0 ? (want - PL[j]) / span : 0; f = Math.max(0, Math.min(1, f));
       TX[q] = PX[j] + (PX[j + 1] - PX[j]) * f; TY[q] = PY[j] + (PY[j + 1] - PY[j]) * f;
     }
-    snap = built; built = true; // after a rebuild (rotation, resize) jump straight to the scroll position instead of redrawing
+    snap = built; built = true; lastDrawn = -1; // after a rebuild (rotation, resize) jump straight to the scroll position instead of redrawing
     [glow, sharp].forEach(function (p) { p.style.strokeDasharray = total; p.style.strokeDashoffset = total - drawn; });
-    halo = el("circle", { r: "14", fill: ROUTE, opacity: "0.18", filter: "url(#route-blur)" }, svg);
+    halo = el("circle", lite ? { r: "9", fill: ROUTE, opacity: "0.22" } : { r: "14", fill: ROUTE, opacity: "0.18", filter: "url(#route-blur)" }, svg);
     head = el("circle", { r: "4", fill: ROUTE_HEAD }, svg);
     if (reduce) { drawn = total; }
   }
 
-  var TX = null, TY = null, TSTEP = 1, snap = false, built = false;
+  var TX = null, TY = null, TSTEP = 1, snap = false, built = false, lastDrawn = -1;
   // Length along the path whose point sits at document y (the path only moves downward).
   function lengthAtY(y) {
     var lo = 0, hi = TY.length - 1;
@@ -260,7 +263,7 @@
   var cv = document.getElementById("bg-lines"), ctx = cv ? cv.getContext("2d") : null, CW = 0, CH = 0;
   function sizeBg() {
     if (!cv) return;
-    var dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+    var dpr = Math.min(window.devicePixelRatio || 1, lite ? 1 : 1.5);
     CW = cv.clientWidth; CH = cv.clientHeight;
     cv.width = CW * dpr; cv.height = CH * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
@@ -389,7 +392,7 @@
   }
 
   /* ---------------- Frame ---------------- */
-  var lastBgY = -1, lastT = 0;
+  var lastBgY = -1, lastT = 0, frameNo = 0, lastGX = null, lastGY = null;
   function frame(t) {
     t = t || 0;
     if (document.hidden) { requestAnimationFrame(frame); return; }
@@ -400,20 +403,29 @@
       // Same easing speed at 30, 60 or 120 frames per second.
       if (snap || reduce) { drawn = target; snap = false; }
       else drawn += (target - drawn) * (1 - Math.pow(0.88, dt / 16.7));
-      var off = Math.max(0, total - drawn);
-      sharp.style.strokeDashoffset = off; glow.style.strokeDashoffset = off;
+      var moved = Math.abs(drawn - lastDrawn) >= 0.25;
+      if (!moved) drawn = lastDrawn;
       var pt = pointAt(Math.max(0, drawn));
-      head.setAttribute("cx", pt.x); head.setAttribute("cy", pt.y);
-      halo.setAttribute("cx", pt.x); halo.setAttribute("cy", pt.y);
-      var hy = pt.y;
-      for (var i = 0; i < pts.length; i++) pts[i].el.classList.toggle("lit", pts[i].y <= hy + 2);
+      if (moved) {
+        // Only touch the DOM while the line is actually moving.
+        lastDrawn = drawn;
+        var off = Math.max(0, total - drawn);
+        sharp.style.strokeDashoffset = off; glow.style.strokeDashoffset = off;
+        head.setAttribute("cx", pt.x); head.setAttribute("cy", pt.y);
+        halo.setAttribute("cx", pt.x); halo.setAttribute("cy", pt.y);
+        for (var i = 0; i < pts.length; i++) pts[i].el.classList.toggle("lit", pts[i].y <= pt.y + 2);
+      }
       if (glowEl) {
-        glowEl.style.setProperty("--gx", (pt.x + mr.left).toFixed(0) + "px");
-        glowEl.style.setProperty("--gy", (pt.y + mr.top).toFixed(0) + "px");
+        var gx = Math.round(pt.x + mr.left), gy = Math.round(pt.y + mr.top);
+        if (gx !== lastGX || gy !== lastGY) {
+          lastGX = gx; lastGY = gy;
+          glowEl.style.setProperty("--gx", gx + "px");
+          glowEl.style.setProperty("--gy", gy + "px");
+        }
       }
     }
     if (!reduce) {
-      if (!lowPower) drawBg(t);
+      if (!lowPower) { if (!lite || (frameNo++ & 1) === 0) drawBg(t); }
       else if (window.scrollY !== lastBgY) { lastBgY = window.scrollY; drawBg(0); }
       animateMotifs(t);
     }
