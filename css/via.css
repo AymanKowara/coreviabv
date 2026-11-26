@@ -642,3 +642,10 @@ main > section { position: relative; z-index: 1; }
   .stop-grid .motif-road, .cp-grid .motif-road { width: min(56%, 12.5rem); }
   .cp-grid .motif { margin-top: 1rem; }
 }
+
+/* Phones: the copy under CORE•via steps in by one rail, leaving a clear lane on the left
+   for the line that drops from the dot, turns under the word and runs down the page. */
+@media (max-width: 47.5rem) {
+  .hero .defs, .hero .hero-actions, .hero .stats { margin-left: var(--rail); }
+  .hero .defs { margin-top: 3.25rem; }
+}

@@ -68,7 +68,6 @@
     var W = main.clientWidth;
     H = main.scrollHeight;
     nodes = Array.prototype.slice.call(main.querySelectorAll("[data-node]")).filter(visible).filter(function (n) {
-      if (n.getAttribute("data-node") === "hero" && W < 760) return false;
       // On narrow screens the line runs down the left rail through the card nodes; the animations below the cards stay off it.
       if (n.classList.contains("motif") && narrow.matches) return false;
       return true;
@@ -111,7 +110,7 @@
       while ((t = tw.nextNode())) {
         if (!t.textContent.trim()) continue;
         var pe = t.parentElement;
-        if (!pe || pe.closest("svg, .motif, [hidden], .sr-only, .skip-link")) continue;
+        if (!pe || pe.closest("svg, .motif, [hidden], .sr-only, .skip-link, .word")) continue; // the line starts inside CORE•via by design
         rg.selectNodeContents(t);
         var rs = rg.getClientRects(), sh = animShift(pe);
         for (var q = 0; q < rs.length; q++) if (rs[q].width > 0) obs.push(box(rs[q], sh));
@@ -150,7 +149,7 @@
         for (var u = 0; u <= 1.0001; u += 1 / 16) n += hitPoint(cubic(c[0], c[2], c[4], c[6], u), cubic(c[1], c[3], c[5], c[7], u), list);
       });
       var x0 = Math.min(L.arc1[6], L.arc2[0]), x1 = Math.max(L.arc1[6], L.arc2[0]);
-      for (var x = x0; x <= x1; x += 8) n += hitPoint(x, g, list);
+      for (var k = 0; k < list.length; k++) { var o = list[k]; if (g > o.t && g < o.b && x1 > o.l && x0 < o.r) n += 1 + (Math.min(x1, o.r) - Math.max(x0, o.l)) / 20; }
       return n;
     }
     function gapY(a, b) {
@@ -181,16 +180,20 @@
     for (var i = 1; i < pts.length; i++) legs.push(Math.abs(pts[i].x - pts[i - 1].x) < 2 ? null : bestLeg(pts[i - 1], pts[i]));
     // If the opening leg from the CORE•via dot cannot avoid the text (narrow layouts), start at the next stop instead.
     if (pts.length > 2 && pts[0].el.getAttribute("data-node") === "hero" && legs[0] && legs[0].hits > 0) { pts.shift(); legs.shift(); nodes.shift(); }
+    // The path is kept as a list of segments too, so positions along it can be sampled without the DOM.
+    var segs = [], cx = pts[0].x, cy = pts[0].y;
+    function lineTo(x, y) { segs.push([cx, cy, cx, cy, x, y, x, y]); cx = x; cy = y; return " L" + f1(x) + " " + f1(y); }
+    function curveTo(c) { segs.push(c.slice()); cx = c[6]; cy = c[7]; return " C" + f1(c[2]) + " " + f1(c[3]) + " " + f1(c[4]) + " " + f1(c[5]) + " " + f1(c[6]) + " " + f1(c[7]); }
     var d = "M" + f1(pts[0].x) + " " + f1(pts[0].y);
     for (i = 1; i < pts.length; i++) {
       var a = pts[i - 1], b = pts[i], L = legs[i - 1];
-      if (!L) { d += " L" + f1(b.x) + " " + f1(b.y); continue; }
-      var S = legShape(a, b, L.g, L.h), c1 = S.arc1, c2 = S.arc2;
-      if (S.y1 > a.y + 1) d += " L" + f1(a.x) + " " + f1(S.y1);
-      d += " C" + f1(c1[2]) + " " + f1(c1[3]) + " " + f1(c1[4]) + " " + f1(c1[5]) + " " + f1(c1[6]) + " " + f1(c1[7]);
-      d += " L" + f1(c2[0]) + " " + f1(c2[1]);
-      d += " C" + f1(c2[2]) + " " + f1(c2[3]) + " " + f1(c2[4]) + " " + f1(c2[5]) + " " + f1(c2[6]) + " " + f1(c2[7]);
-      if (S.y2 < b.y - 1) d += " L" + f1(b.x) + " " + f1(b.y);
+      if (!L) { d += lineTo(b.x, b.y); continue; }
+      var S = legShape(a, b, L.g, L.h);
+      if (S.y1 > a.y + 1) d += lineTo(a.x, S.y1);
+      d += curveTo(S.arc1);
+      d += lineTo(S.arc2[0], S.arc2[1]);
+      d += curveTo(S.arc2);
+      if (S.y2 < b.y - 1) d += lineTo(b.x, b.y);
     }
     base = el("path", { d: d, fill: "none", stroke: ROUTE_FAINT, "stroke-width": "1", "stroke-dasharray": "2 6" }, svg);
     glow = el("path", lowPower
@@ -198,20 +201,45 @@
       : { d: d, fill: "none", stroke: "url(#route-grad)", "stroke-width": "6", "stroke-linecap": "round", opacity: "0.55", filter: "url(#route-blur)" }, svg);
     sharp = el("path", { d: d, fill: "none", stroke: "url(#route-grad)", "stroke-width": "1.6", "stroke-linecap": "round" }, svg);
     total = sharp.getTotalLength();
+    // Sample the path once; every frame then reads positions from this table instead of asking the
+    // browser for points on a long path (slow on phones, especially Safari).
+    // Dense polyline along the segments, then resampled at equal steps of the browser's own total length.
+    var PX = [pts[0].x], PY = [pts[0].y], PL = [0], acc = 0;
+    segs.forEach(function (c) {
+      var m = c[0] === c[2] && c[1] === c[3] && c[4] === c[6] && c[5] === c[7] ? 1 : 24;
+      for (var u = 1; u <= m; u++) {
+        var x = cubic(c[0], c[2], c[4], c[6], u / m), y = cubic(c[1], c[3], c[5], c[7], u / m);
+        acc += Math.hypot(x - PX[PX.length - 1], y - PY[PY.length - 1]); PX.push(x); PY.push(y); PL.push(acc);
+      }
+    });
+    var scale = acc > 0 ? total / acc : 1, n = Math.max(2, Math.ceil(total / 4)), step = total / (n - 1);
+    TX = new Float32Array(n); TY = new Float32Array(n); TSTEP = step;
+    for (var q = 0, j = 0; q < n; q++) {
+      var want = q * step / scale;
+      while (j < PL.length - 2 && PL[j + 1] < want) j++;
+      var span = PL[j + 1] - PL[j], f = span > 0 ? (want - PL[j]) / span : 0; f = Math.max(0, Math.min(1, f));
+      TX[q] = PX[j] + (PX[j + 1] - PX[j]) * f; TY[q] = PY[j] + (PY[j + 1] - PY[j]) * f;
+    }
+    snap = built; built = true; // after a rebuild (rotation, resize) jump straight to the scroll position instead of redrawing
     [glow, sharp].forEach(function (p) { p.style.strokeDasharray = total; p.style.strokeDashoffset = total - drawn; });
     halo = el("circle", { r: "14", fill: ROUTE, opacity: "0.18", filter: "url(#route-blur)" }, svg);
     head = el("circle", { r: "4", fill: ROUTE_HEAD }, svg);
     if (reduce) { drawn = total; }
   }
 
+  var TX = null, TY = null, TSTEP = 1, snap = false, built = false;
   // Length along the path whose point sits at document y (the path only moves downward).
   function lengthAtY(y) {
-    var lo = 0, hi = total;
-    for (var i = 0; i < 22; i++) {
-      var mid = (lo + hi) / 2;
-      if (sharp.getPointAtLength(mid).y < y) lo = mid; else hi = mid;
-    }
-    return lo;
+    var lo = 0, hi = TY.length - 1;
+    if (y <= TY[0]) return 0;
+    if (y >= TY[hi]) return total;
+    while (hi - lo > 1) { var mid = (lo + hi) >> 1; if (TY[mid] < y) lo = mid; else hi = mid; }
+    var dy = TY[hi] - TY[lo], f = dy > 0 ? (y - TY[lo]) / dy : 0;
+    return (lo + f) * TSTEP;
+  }
+  function pointAt(len) {
+    var u = Math.max(0, Math.min(TX.length - 1, len / TSTEP)), i = Math.floor(u), j = Math.min(TX.length - 1, i + 1), f = u - i;
+    return { x: TX[i] + (TX[j] - TX[i]) * f, y: TY[i] + (TY[j] - TY[i]) * f };
   }
 
   var rebuildTimer = null;
@@ -219,7 +247,13 @@
   window.addEventListener("resize", function () { rebuildSoon(150); });
   document.addEventListener("corevia:lang", function () { rebuildSoon(320); });
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(function () { rebuildSoon(0); });
-  if ("ResizeObserver" in window) new ResizeObserver(function () { rebuildSoon(200); }).observe(main);
+  // Rebuild only when the page really changes size (not on every small reflow).
+  var lastW = 0, lastH = 0;
+  if ("ResizeObserver" in window) new ResizeObserver(function () {
+    var w = main.clientWidth, h = main.scrollHeight;
+    if (Math.abs(w - lastW) < 2 && Math.abs(h - lastH) < 4) return;
+    lastW = w; lastH = h; rebuildSoon(200);
+  }).observe(main);
   build();
 
   /* ---------------- Background contour lines ---------------- */
@@ -355,17 +389,20 @@
   }
 
   /* ---------------- Frame ---------------- */
-  var lastBgY = -1;
+  var lastBgY = -1, lastT = 0;
   function frame(t) {
     t = t || 0;
     if (document.hidden) { requestAnimationFrame(frame); return; }
-    if (sharp && total) {
+    var dt = lastT ? Math.min(100, t - lastT) : 16.7; lastT = t;
+    if (sharp && total && TY) {
       var mr = main.getBoundingClientRect();
       var target = reduce ? total : lengthAtY(window.innerHeight * 0.58 - mr.top);
-      drawn += (target - drawn) * (reduce ? 1 : 0.12);
+      // Same easing speed at 30, 60 or 120 frames per second.
+      if (snap || reduce) { drawn = target; snap = false; }
+      else drawn += (target - drawn) * (1 - Math.pow(0.88, dt / 16.7));
       var off = Math.max(0, total - drawn);
       sharp.style.strokeDashoffset = off; glow.style.strokeDashoffset = off;
-      var pt = sharp.getPointAtLength(Math.max(0, drawn));
+      var pt = pointAt(Math.max(0, drawn));
       head.setAttribute("cx", pt.x); head.setAttribute("cy", pt.y);
       halo.setAttribute("cx", pt.x); halo.setAttribute("cy", pt.y);
       var hy = pt.y;
