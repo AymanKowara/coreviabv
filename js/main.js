@@ -338,7 +338,23 @@
     });
   }
 
+  /* The header is fixed, so "#top" cannot be scrolled to as an anchor: the logo and "Back to top"
+     scroll the page to the very top instead (and close the mobile menu if it is open). */
+  function initTopLinks() {
+    document.addEventListener("click", function (e) {
+      var a = e.target.closest && e.target.closest('a[href="#top"]');
+      if (!a || e.metaKey || e.ctrlKey || e.shiftKey) return;
+      e.preventDefault();
+      var reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      window.scrollTo({ top: 0, behavior: reduce ? "auto" : "smooth" });
+      try { window.history.replaceState(null, "", window.location.pathname + window.location.search); } catch (err) { /* sandboxed */ }
+      var nav = document.querySelector(".primary-nav.is-open"), btn = document.querySelector(".menu-toggle");
+      if (nav && btn) btn.click();
+    });
+  }
+
   buildLangMenu();
+  initTopLinks();
   initMenu();
   initHeader();
   initPaths();
