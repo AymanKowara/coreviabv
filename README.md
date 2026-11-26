@@ -59,6 +59,6 @@ Address, KvK number and VAT number are hidden until they are filled in `js/confi
 Talentra copy deliberately does not mention the Wtta until authorisation is granted.
 
 ## Updating files
-CSS and JS are linked with `?v=…` (e.g. `js/via.js?v=20261126f`). After changing a CSS or JS file, raise that
+CSS and JS are linked with `?v=…` (e.g. `js/via.js?v=20261126g`). After changing a CSS or JS file, raise that
 number in every HTML page so visitors' browsers fetch the new file instead of a cached copy.
 `.nojekyll` tells GitHub Pages to serve the files as they are, without running Jekyll.
