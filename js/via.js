@@ -21,7 +21,8 @@
   var LINE_STRONG = tok("--contour-strong", "rgba(232,206,153,0.13)"), LINE_SOFT = tok("--contour-soft", "rgba(163,171,201,0.065)");
   // Lighter mode for slow devices or data saver: static background, no blur, motifs only while visible.
   var conn = navigator.connection || {};
-  var lowPower = !!conn.saveData || (navigator.hardwareConcurrency || 8) <= 4 || (navigator.deviceMemory || 8) <= 4;
+  // iPhones always report 4 cores, so only genuinely weak devices (≤2 cores or ≤2 GB) and data saver count.
+  var lowPower = !!conn.saveData || (navigator.hardwareConcurrency || 8) <= 2 || (navigator.deviceMemory || 8) <= 2;
   if (lowPower) document.documentElement.classList.add("low-power");
 
   function el(tag, attrs, parent) {
@@ -58,6 +59,8 @@
     return { x: dx, y: dy };
   }
 
+  var narrow = window.matchMedia("(max-width: 68rem)");
+
   function build() {
     fitHero();
     if (!svg) return;
@@ -65,7 +68,10 @@
     var W = main.clientWidth;
     H = main.scrollHeight;
     nodes = Array.prototype.slice.call(main.querySelectorAll("[data-node]")).filter(visible).filter(function (n) {
-      return !(n.getAttribute("data-node") === "hero" && W < 760);
+      if (n.getAttribute("data-node") === "hero" && W < 760) return false;
+      // On narrow screens the line runs down the left rail through the card nodes; the animations below the cards stay off it.
+      if (n.classList.contains("motif") && narrow.matches) return false;
+      return true;
     });
     pts = nodes.map(function (n) {
       var r = n.getBoundingClientRect(), sh = animShift(n);

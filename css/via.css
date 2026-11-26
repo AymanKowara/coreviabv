@@ -395,7 +395,6 @@ main > section { position: relative; z-index: 1; }
   .primary-nav a { display: block; padding-block: 1rem; font-size: 1.125rem; color: var(--ink); }
   .primary-nav a::after { display: none; }
   .stop-grid, .stop.alt .stop-grid { grid-template-columns: minmax(0, 1fr); padding-left: calc(var(--gutter) + var(--rail)); }
-  .motif { display: none; }
   .stop-card { position: relative; }
   .card-node { display: block; }
   .about-grid, .fd-grid, .contact-grid { grid-template-columns: minmax(0, 1fr); }
@@ -551,7 +550,6 @@ main > section { position: relative; z-index: 1; }
 
 @media (max-width: 68rem) {
   .needs-grid, .market-grid, .cp-grid { grid-template-columns: minmax(0, 1fr); }
-  .cp-grid .motif { display: none; }
   .metro { display: none; }
 }
 @media (max-width: 40rem) {
@@ -637,3 +635,10 @@ main > section { position: relative; z-index: 1; }
 .wa:hover span, .wa:focus-visible span { max-width: 8rem; opacity: 1; margin-left: .55rem; }
 @media (hover: none) { .wa span { display: none; } }
 [hidden] { display: none !important; }
+
+/* Tablet and phone: the company animations sit under each card, smaller, instead of disappearing. */
+@media (max-width: 68rem) {
+  .stop-grid .motif, .cp-grid .motif { order: 2; justify-self: start; width: min(78%, 17rem); margin-top: -.5rem; }
+  .stop-grid .motif-road, .cp-grid .motif-road { width: min(56%, 12.5rem); }
+  .cp-grid .motif { margin-top: 1rem; }
+}
